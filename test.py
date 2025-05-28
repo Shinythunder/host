@@ -46,8 +46,6 @@ install_import([
     ("psutil", "psutil"),
     ("mss", "mss"),
     ("win32com.client", "pywin32"),
-    ("cv2", "opencv-python"),
-    ("numpy", "numpy"),
 ])
 
 
