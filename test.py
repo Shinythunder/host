@@ -48,8 +48,6 @@ install_import([
     ("win32com.client", "pywin32"),
     ("cv2", "opencv-python"),
     ("numpy", "numpy"),
-    ("PyQt6.QtWidgets", "PyQt6"),
-    ("screeninfo", "screeninfo")
 ])
 
 
